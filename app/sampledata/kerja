@@ -1,0 +1,19 @@
+Tolong revisi alur pencatatan dan logika timer pada aplikasi Larkam ini agar menjadi independen per kelas (bukan timer global).
+
+Berikut detail perubahan alur dan logika yang diinginkan:
+
+1. Flow Input & Start Timer:
+   - Pengguna mengisi data per kelas terlebih dahulu (Nama Kelas, Jumlah Hadir, Jumlah Tidak Hadir beserta deskripsi/alasan izin).
+   - Setelah data kelas diisi, ada tombol "Mulai Timer" khusus untuk kelas tersebut.
+   - Waktu mulai timer untuk tiap kelas berbeda-beda (independen).
+
+2. UI & Behavior Kartu Kelas:
+   - Setiap kartu kelas menjalankan CountDownTimer 25 menit secara terpisah.
+   - Kartu menampilkan hitung mundur timer real-time dan jumlah siswa yang hadir.
+   - Kartu dapat diklik/ditekan untuk menambah (increment) jumlah siswa yang hadir selama timer masih berjalan.
+   - Perubahan Visual: Ketika timer 25 menit untuk kelas tersebut HABIS, indikator/border kartu kelas otomatis berubah warna menjadi MERAH.
+
+3. Kebutuhan Kode (Kotlin & Firebase):
+   - Update Data Class / Model untuk menyimpan `waktu_mulai_timer` (Timestamp) dan `status_timer` per kelas di Firestore.
+   - Update ViewModel menggunakan Kotlin Coroutines / Flow untuk mengelola state timer independen per item kelas.
+   - Update UI Component (Jetpack Compose / XML Layout) untuk menangani perubahan warna merah dan increment jumlah hadir saat kartu diklik.
