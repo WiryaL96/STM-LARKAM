@@ -7,7 +7,7 @@ import kotlinx.coroutines.flow.Flow
 
 /**
  * Abstraction over the Larkam data source. The production implementation is
- * [FirestoreLarkamRepository]; keeping the interface makes the ViewModels
+ * [RealtimeLarkamRepository]; keeping the interface makes the ViewModels
  * testable and the data source swappable.
  */
 interface LarkamRepository {

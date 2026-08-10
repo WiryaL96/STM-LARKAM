@@ -1,12 +1,13 @@
 # Larkam — Firebase Setup
 
-The app uses **Cloud Firestore** when configured, but **also builds and runs without it**:
+The app uses **Firebase Realtime Database** when configured, but **also builds and runs
+without it**:
 
 - **No `google-services.json`** → the app builds and runs on a **local in-memory
   repository** (sample data + working timer/saving, data lasts only per session). The
   Google Services Gradle plugin is skipped automatically.
 - **`app/google-services.json` present** → the plugin is applied and the app switches to
-  **real Cloud Firestore** automatically (`ServiceLocator` detects it at runtime).
+  the **real Realtime Database** automatically (`ServiceLocator` detects it at runtime).
 
 So you can run it right now; follow the steps below only when you want real cloud sync.
 
@@ -27,53 +28,72 @@ So you can run it right now; follow the steps below only when you want real clou
 
    (`app/google-services.json.example` shows the expected shape.)
 
-## 2. Enable Cloud Firestore
-1. Firebase Console → **Build → Firestore Database → Create database**.
-2. Start in **test mode** for development, then click through.
+## 2. Enable Realtime Database
+1. Firebase Console → **Build → Realtime Database → Create database**.
+2. Pick a location, then **Start in test mode** for development.
+3. Make sure `google-services.json` contains the database URL under
+   `project_info.firebase_url` (Firebase adds it once the database exists). It looks like:
+
+   ```
+   https://<project-id>-default-rtdb.firebaseio.com
+   ```
+
+   If you created the DB **after** downloading `google-services.json`, re-download the
+   file so the URL is included — otherwise `FirebaseDatabase.getInstance()` throws and the
+   app silently falls back to the local repository.
 
 ### Development security rules (test only)
+```json
+{
+  "rules": {
+    ".read": true,
+    ".write": true
+  }
+}
 ```
-rules_version = '2';
-service cloud.firestore {
-  match /databases/{database}/documents {
-    match /{document=**} {
-      allow read, write: if true;   // DEV ONLY — lock this down before production
-    }
+> DEV ONLY — lock this down before production.
+
+For faster session filtering you can also index by angkatan:
+```json
+{
+  "rules": {
+    ".read": true,
+    ".write": true,
+    "sesi_larkam": { ".indexOn": ["angkatan_id"] },
+    "angkatan": { ".indexOn": ["nama_angkatan"] }
   }
 }
 ```
 
-## 3. Firestore data model
-The app reads/writes these collections (field names are snake_case in Firestore):
+## 3. Realtime Database data model
+The app reads/writes this tree (field names are snake_case in the database):
 
-### `angkatan`
-| field           | type   | example |
-|-----------------|--------|---------|
-| (document id)   | string | auto    |
-| `nama_angkatan` | string | `@51`   |
+```
+angkatan/
+  <pushId>/
+    nama_angkatan: "@51"
+sesi_larkam/
+  <pushId>/
+    tanggal:     1722556800000        // epoch millis
+    angkatan_id: "<angkatan pushId>"
+    status:      "BERJALAN"|"SELESAI"
+    rekap_kelas:
+      0/
+        nama_kelas:        "XII TOI A"
+        total_siswa:       30          // jumlah hadir target / roster
+        total_hadir:       28          // dihitung live via ketuk kartu
+        total_izin:        2
+        detail_izin:
+          0/ { nama: "...", alasan: "..." }
+        waktu_mulai_timer: 1722556801000   // epoch millis, null bila belum mulai
+        status_timer:      "BELUM_MULAI"|"BERJALAN"|"SELESAI"
+```
 
-> On first launch the app **auto-seeds** `@51`, `@52`, `@53` if the collection is empty
-> (see `LarkamRepository.ensureAngkatanSeeded()`).
-
-### `sesi_larkam`
-| field         | type   | notes |
-|---------------|--------|-------|
-| (document id) | string | also stored as `idSesi` |
-| `tanggal`     | number | epoch millis |
-| `angkatan_id` | string | id of an `angkatan` doc |
-| `status`      | string | `BERJALAN` while running, `SELESAI` when done |
-| `rekap_kelas` | array  | list of objects (below) |
-
-Each element of `rekap_kelas` (each class has its OWN independent timer):
-| field               | type      | example |
-|---------------------|-----------|---------|
-| `nama_kelas`        | string    | `XII TOI A` |
-| `total_siswa`       | number    | `30` (jumlah hadir target / roster) |
-| `total_hadir`       | number    | `28` (dihitung live via ketuk kartu) |
-| `total_izin`        | number    | `2` |
-| `detail_izin`       | array     | `[{ "nama": "...", "alasan": "..." }]` |
-| `waktu_mulai_timer` | timestamp | kapan timer kelas ini dimulai (null bila belum) |
-| `status_timer`      | string    | `BELUM_MULAI` / `BERJALAN` / `SELESAI` |
+- The record **key** (push id) is the `id` / `idSesi`; it is not duplicated as a child.
+- On first launch the app **auto-seeds** `@51`, `@52`, `@53` under `angkatan` if that node
+  is empty (see `LarkamRepository.ensureAngkatanSeeded()`).
+- Each class in `rekap_kelas` has its OWN independent timer (`waktu_mulai_timer` +
+  `status_timer`).
 
 ## 4. Build & run
 ```
@@ -90,3 +110,5 @@ Then install on a device/emulator (API 29+).
   matched to the bundled Kotlin) + `buildFeatures { compose = true }`.
 - Kotlin `jvmTarget` is set in the top-level `kotlin { compilerOptions { } }` block
   (there is no `android { kotlinOptions { } }` under built-in Kotlin).
+- Firebase versions are managed by the **firebase-bom**; only
+  `com.google.firebase:firebase-database` is pulled in.

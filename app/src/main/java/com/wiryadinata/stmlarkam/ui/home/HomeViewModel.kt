@@ -38,7 +38,7 @@ data class HomeUiState(
 /**
  * Drives the Home screen: exposes the angkatan filter, the current selection, and
  * the flattened list of class history cards (derived from finished sessions),
- * all backed by real-time Firestore streams.
+ * all backed by real-time Realtime Database streams.
  */
 class HomeViewModel(private val repository: LarkamRepository) : ViewModel() {
 

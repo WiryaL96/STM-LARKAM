@@ -2,6 +2,8 @@ package com.wiryadinata.stmlarkam.ui.session
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -11,12 +13,14 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -24,6 +28,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.ErrorOutline
+import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Timer
@@ -33,10 +38,14 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.ExposedDropdownMenuAnchorType
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedCard
@@ -56,6 +65,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -64,8 +74,15 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.wiryadinata.stmlarkam.data.model.Angkatan
 import com.wiryadinata.stmlarkam.data.model.DetailIzin
+import com.wiryadinata.stmlarkam.data.model.KelasCatalog
 import com.wiryadinata.stmlarkam.ui.formatMmSs
 import com.wiryadinata.stmlarkam.ui.theme.CardExpiredRed
+
+/** Attendance input bounds per class: minimal 1, maksimal 40 siswa. */
+private const val MAX_SISWA = 40
+
+/** Timer duration input bounds per class (minutes): minimal 1, maksimal 180. */
+private const val MAX_DURASI_MENIT = 180
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -143,7 +160,21 @@ private fun EditingContent(state: SessionUiState, viewModel: SessionViewModel) {
             Column {
                 Spacer(Modifier.height(4.dp))
                 SectionTitle("Tambah Kelas")
-                AddKelasForm(onAdd = viewModel::addKelas)
+                // Class options come from the catalog for the selected angkatan, minus the
+                // classes already added, so the same class can't be picked twice.
+                // remember() keyed on angkatan + added names so the timer's frequent state
+                // updates don't rebuild this list (and re-render the picker) on every tick.
+                val namaAngkatan = state.angkatanOptions
+                    .firstOrNull { it.id == state.angkatanId }?.namaAngkatan.orEmpty()
+                val addedNames = state.cards.map { it.namaKelas }.toSet()
+                val kelasOptions = remember(namaAngkatan, addedNames) {
+                    KelasCatalog.kelasFor(namaAngkatan).filterNot { it in addedNames }
+                }
+                AddKelasForm(
+                    angkatanKey = state.angkatanId,
+                    kelasOptions = kelasOptions,
+                    onAdd = viewModel::addKelas
+                )
                 Spacer(Modifier.height(8.dp))
                 SectionTitle(
                     if (state.cards.isEmpty()) "Belum ada kelas" else "Kelas (${state.cards.size})"
@@ -162,6 +193,8 @@ private fun EditingContent(state: SessionUiState, viewModel: SessionViewModel) {
             TimerCard(
                 card = card,
                 onStart = { viewModel.startTimer(card.id) },
+                onPause = { viewModel.pauseTimer(card.id) },
+                onResume = { viewModel.resumeTimer(card.id) },
                 onStop = { viewModel.stopTimer(card.id) },
                 onTap = { viewModel.onCardTap(card.id) },
                 onRemove = { viewModel.removeKelas(card.id) }
@@ -174,15 +207,22 @@ private fun EditingContent(state: SessionUiState, viewModel: SessionViewModel) {
 private fun TimerCard(
     card: KelasCard,
     onStart: () -> Unit,
+    onPause: () -> Unit,
+    onResume: () -> Unit,
     onStop: () -> Unit,
     onTap: () -> Unit,
     onRemove: () -> Unit
 ) {
-    // Manually stopped classes end in a neutral color; only a real timeout is red.
-    val doneColor = if (card.endedByTimeout) CardExpiredRed else MaterialTheme.colorScheme.secondary
+    // Full attendance ends green (positive); a real timeout is red; manual stop is neutral.
+    val doneColor = when {
+        card.completedFull -> MaterialTheme.colorScheme.primary
+        card.endedByTimeout -> CardExpiredRed
+        else -> MaterialTheme.colorScheme.secondary
+    }
     val borderColor = when (card.status) {
         TimerStatus.BELUM_MULAI -> MaterialTheme.colorScheme.outline
         TimerStatus.BERJALAN -> MaterialTheme.colorScheme.primary
+        TimerStatus.PAUSED -> MaterialTheme.colorScheme.tertiary
         TimerStatus.SELESAI -> doneColor
     }
     val accentColor = if (card.isDone) doneColor else MaterialTheme.colorScheme.onSurface
@@ -239,7 +279,8 @@ private fun TimerCard(
                 ) {
                     Icon(Icons.Filled.PlayArrow, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.size(6.dp))
-                    Text("Mulai Timer")
+                    // Show the user-defined duration on the start button.
+                    Text("Mulai ${formatMmSs(card.durationMs)}")
                 }
 
                 TimerStatus.BERJALAN -> Column(
@@ -264,14 +305,23 @@ private fun TimerCard(
                                 style = MaterialTheme.typography.titleMedium
                             )
                         }
-                        OutlinedButton(
-                            onClick = onStop,
-                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
-                            colors = ButtonDefaults.outlinedButtonColors(contentColor = CardExpiredRed)
-                        ) {
-                            Icon(Icons.Filled.Stop, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Spacer(Modifier.size(2.dp))
-                            Text("Stop")
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            IconButton(onClick = onPause, modifier = Modifier.size(32.dp)) {
+                                Icon(
+                                    Icons.Filled.Pause,
+                                    contentDescription = "Jeda timer",
+                                    modifier = Modifier.size(20.dp),
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                            IconButton(onClick = onStop, modifier = Modifier.size(32.dp)) {
+                                Icon(
+                                    Icons.Filled.Stop,
+                                    contentDescription = "Stop timer",
+                                    modifier = Modifier.size(20.dp),
+                                    tint = CardExpiredRed
+                                )
+                            }
                         }
                     }
                     Text(
@@ -281,23 +331,84 @@ private fun TimerCard(
                     )
                 }
 
-                TimerStatus.SELESAI -> Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.Center,
+                TimerStatus.PAUSED -> Column(
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Icon(
-                        if (card.endedByTimeout) Icons.Filled.TimerOff else Icons.Filled.Stop,
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp),
-                        tint = doneColor
-                    )
-                    Spacer(Modifier.size(4.dp))
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                Icons.Filled.Pause,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp),
+                                tint = MaterialTheme.colorScheme.tertiary
+                            )
+                            Spacer(Modifier.size(4.dp))
+                            Text(
+                                text = formatMmSs(card.remainingMs),
+                                fontWeight = FontWeight.Bold,
+                                style = MaterialTheme.typography.titleMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            IconButton(onClick = onResume, modifier = Modifier.size(32.dp)) {
+                                Icon(
+                                    Icons.Filled.PlayArrow,
+                                    contentDescription = "Lanjutkan timer",
+                                    modifier = Modifier.size(20.dp),
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                            IconButton(onClick = onStop, modifier = Modifier.size(32.dp)) {
+                                Icon(
+                                    Icons.Filled.Stop,
+                                    contentDescription = "Stop timer",
+                                    modifier = Modifier.size(20.dp),
+                                    tint = CardExpiredRed
+                                )
+                            }
+                        }
+                    }
                     Text(
-                        text = if (card.endedByTimeout) "WAKTU HABIS" else "DIHENTIKAN",
-                        color = doneColor,
-                        fontWeight = FontWeight.Bold
+                        "timer dijeda",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
+                }
+
+                TimerStatus.SELESAI -> {
+                    val doneIcon = when {
+                        card.completedFull -> Icons.Filled.CheckCircle
+                        card.endedByTimeout -> Icons.Filled.TimerOff
+                        else -> Icons.Filled.Stop
+                    }
+                    val doneLabel = when {
+                        card.completedFull -> "HADIR LENGKAP"
+                        card.endedByTimeout -> "WAKTU HABIS"
+                        else -> "DIHENTIKAN"
+                    }
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(
+                            doneIcon,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp),
+                            tint = doneColor
+                        )
+                        Spacer(Modifier.size(4.dp))
+                        Text(
+                            text = doneLabel,
+                            color = doneColor,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
                 }
             }
         }
@@ -348,56 +459,97 @@ private fun AngkatanChips(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun AddKelasForm(onAdd: (String, Int, List<DetailIzin>) -> Unit) {
+private fun AddKelasForm(
+    angkatanKey: String,
+    kelasOptions: List<String>,
+    onAdd: (String, Int, List<DetailIzin>, Int) -> Unit
+) {
     var namaKelas by remember { mutableStateOf("") }
     var jumlahText by remember { mutableStateOf("") }
+    var durasiText by remember { mutableStateOf("") }
     val izinList = remember { mutableStateListOf<DetailIzin>() }
     var izinNama by remember { mutableStateOf("") }
     var izinAlasan by remember { mutableStateOf("") }
 
+    // Reset the picked class when the angkatan (hence the option set) changes.
+    LaunchedEffect(angkatanKey) { namaKelas = "" }
+
     val jumlah = jumlahText.toIntOrNull() ?: 0
-    val canAdd = namaKelas.isNotBlank() && jumlah > 0
+    val jumlahValid = jumlah in 1..MAX_SISWA
+    val durasi = durasiText.toIntOrNull() ?: 0
+    val durasiValid = durasi in 1..MAX_DURASI_MENIT
+    val canAdd = namaKelas.isNotBlank() && jumlahValid && durasiValid
 
     Card(elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)) {
         Column(Modifier.padding(14.dp)) {
+            KelasDropdown(
+                options = kelasOptions,
+                selected = namaKelas,
+                onSelect = { namaKelas = it }
+            )
+            Spacer(Modifier.height(8.dp))
             OutlinedTextField(
-                value = namaKelas,
-                onValueChange = { namaKelas = it },
-                label = { Text("Nama Kelas") },
-                placeholder = { Text("cth: XII TOI A") },
+                value = jumlahText,
+                onValueChange = { input ->
+                    // Digits only, capped at MAX_SISWA (max 2 digits). Empty is allowed while
+                    // typing but blocks "Tambah Kelas" via canAdd (minimal 1 siswa).
+                    val digits = input.filter { it.isDigit() }.take(2)
+                    jumlahText = if (digits.isEmpty()) "" else digits.toInt().coerceAtMost(MAX_SISWA).toString()
+                },
+                label = { Text("Jumlah Siswa Hadir (1–$MAX_SISWA)") },
+                isError = jumlahText.isNotEmpty() && !jumlahValid,
+                supportingText = {
+                    Text(
+                        if (jumlahText.isNotEmpty() && !jumlahValid) "Minimal 1 siswa"
+                        else "Maksimal $MAX_SISWA siswa"
+                    )
+                },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth()
             )
             Spacer(Modifier.height(8.dp))
             OutlinedTextField(
-                value = jumlahText,
-                onValueChange = { input -> jumlahText = input.filter { it.isDigit() } },
-                label = { Text("Jumlah Siswa Hadir") },
+                value = durasiText,
+                onValueChange = { input ->
+                    // Digits only (max 3 digits), capped at MAX_DURASI_MENIT. Empty allowed
+                    // while typing but blocks "Tambah Kelas" via canAdd (minimal 1 menit).
+                    val digits = input.filter { it.isDigit() }.take(3)
+                    durasiText = if (digits.isEmpty()) "" else digits.toInt().coerceAtMost(MAX_DURASI_MENIT).toString()
+                },
+                label = { Text("Durasi Timer / menit (1–$MAX_DURASI_MENIT)") },
+                isError = durasiText.isNotEmpty() && !durasiValid,
+                supportingText = {
+                    Text(
+                        if (durasiText.isNotEmpty() && !durasiValid) "Minimal 1 menit"
+                        else "Timer hitung mundur dari durasi ini"
+                    )
+                },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth()
             )
 
             Spacer(Modifier.height(12.dp))
-            Text("Siswa Tidak Hadir (Izin)", style = MaterialTheme.typography.labelLarge)
-            izinList.forEachIndexed { index, izin ->
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 2.dp)
-                ) {
-                    Text(
-                        "• ${izin.nama} — ${izin.alasan}",
-                        style = MaterialTheme.typography.bodySmall,
-                        modifier = Modifier.weight(1f)
-                    )
-                    IconButton(onClick = { izinList.removeAt(index) }) {
-                        Icon(Icons.Filled.Delete, contentDescription = "Hapus izin")
-                    }
+            Text(
+                if (izinList.isEmpty()) "Siswa Tidak Hadir (Izin)"
+                else "Siswa Tidak Hadir (Izin) • ${izinList.size}",
+                style = MaterialTheme.typography.labelLarge
+            )
+            Spacer(Modifier.height(6.dp))
+
+            val addIzin = {
+                if (izinNama.isNotBlank()) {
+                    // Prepend so the newest entry shows right under the input.
+                    izinList.add(0, DetailIzin(izinNama.trim(), izinAlasan.trim()))
+                    izinNama = ""
+                    izinAlasan = ""
                 }
             }
+
+            // Input row FIRST so it stays put near the label as entries pile up.
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
@@ -407,6 +559,7 @@ private fun AddKelasForm(onAdd: (String, Int, List<DetailIzin>) -> Unit) {
                     onValueChange = { izinNama = it },
                     label = { Text("Nama") },
                     singleLine = true,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
                     modifier = Modifier.weight(1f)
                 )
                 OutlinedTextField(
@@ -414,27 +567,60 @@ private fun AddKelasForm(onAdd: (String, Int, List<DetailIzin>) -> Unit) {
                     onValueChange = { izinAlasan = it },
                     label = { Text("Alasan") },
                     singleLine = true,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                    keyboardActions = KeyboardActions(onDone = { addIzin() }),
                     modifier = Modifier.weight(1f)
                 )
-                IconButton(
-                    onClick = {
-                        if (izinNama.isNotBlank()) {
-                            izinList.add(DetailIzin(izinNama.trim(), izinAlasan.trim()))
-                            izinNama = ""
-                            izinAlasan = ""
+                IconButton(onClick = addIzin) {
+                    Icon(Icons.Filled.Add, contentDescription = "Tambah izin")
+                }
+            }
+
+            // Added entries, newest first, in a bounded scroll area so the form stays compact
+            // and you always see what was just added.
+            if (izinList.isNotEmpty()) {
+                Spacer(Modifier.height(4.dp))
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 160.dp)
+                        .verticalScroll(rememberScrollState())
+                ) {
+                    izinList.forEachIndexed { index, izin ->
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 2.dp)
+                        ) {
+                            Text(
+                                "• ${izin.nama}" +
+                                    if (izin.alasan.isNotBlank()) " — ${izin.alasan}" else "",
+                                style = MaterialTheme.typography.bodySmall,
+                                modifier = Modifier.weight(1f)
+                            )
+                            IconButton(
+                                onClick = { izinList.removeAt(index) },
+                                modifier = Modifier.size(32.dp)
+                            ) {
+                                Icon(
+                                    Icons.Filled.Delete,
+                                    contentDescription = "Hapus izin",
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
                         }
                     }
-                ) {
-                    Icon(Icons.Filled.Add, contentDescription = "Tambah izin")
                 }
             }
 
             Spacer(Modifier.height(12.dp))
             Button(
                 onClick = {
-                    onAdd(namaKelas, jumlah, izinList.toList())
+                    onAdd(namaKelas, jumlah, izinList.toList(), durasi)
                     namaKelas = ""
                     jumlahText = ""
+                    durasiText = ""
                     izinList.clear()
                     izinNama = ""
                     izinAlasan = ""
@@ -445,6 +631,56 @@ private fun AddKelasForm(onAdd: (String, Int, List<DetailIzin>) -> Unit) {
                 Icon(Icons.Filled.Add, contentDescription = null)
                 Spacer(Modifier.size(6.dp))
                 Text("Tambah Kelas")
+            }
+        }
+    }
+}
+
+/** Read-only dropdown that lists the predefined classes for the selected angkatan. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun KelasDropdown(
+    options: List<String>,
+    selected: String,
+    onSelect: (String) -> Unit
+) {
+    var expanded by remember { mutableStateOf(false) }
+    ExposedDropdownMenuBox(
+        expanded = expanded,
+        onExpandedChange = { expanded = it }
+    ) {
+        OutlinedTextField(
+            value = selected,
+            onValueChange = {},
+            readOnly = true,
+            label = { Text("Pilih Kelas") },
+            placeholder = { Text("cth: XII TOI A") },
+            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+            singleLine = true,
+            modifier = Modifier
+                .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable)
+                .fillMaxWidth()
+        )
+        ExposedDropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false }
+        ) {
+            if (options.isEmpty()) {
+                DropdownMenuItem(
+                    text = { Text("Tidak ada kelas tersedia") },
+                    onClick = {},
+                    enabled = false
+                )
+            } else {
+                options.forEach { option ->
+                    DropdownMenuItem(
+                        text = { Text(option) },
+                        onClick = {
+                            onSelect(option)
+                            expanded = false
+                        }
+                    )
+                }
             }
         }
     }

@@ -1,7 +1,8 @@
 package com.wiryadinata.stmlarkam.data.model
 
-import com.google.firebase.firestore.DocumentId
-import com.google.firebase.firestore.PropertyName
+import com.google.firebase.database.Exclude
+import com.google.firebase.database.IgnoreExtraProperties
+import com.google.firebase.database.PropertyName
 
 /**
  * Status values for a Larkam session, as stored in the `status` field.
@@ -12,17 +13,18 @@ object SesiStatus {
 }
 
 /**
- * Firestore document in the `sesi_larkam` collection.
+ * A record under the `sesi_larkam` node of Realtime Database.
  *
- * Firestore field mapping:
- *  - document id    -> [idSesi]
- *  - `tanggal`      -> [tanggal] (epoch milliseconds)
- *  - `angkatan_id`  -> [angkatanId]
- *  - `status`       -> [status]  (see [SesiStatus])
- *  - `rekap_kelas`  -> [rekapKelas] (array of [RekapKelas])
+ * Realtime Database field mapping:
+ *  - record key    -> [idSesi] (the push id; excluded from the written children)
+ *  - `tanggal`     -> [tanggal] (epoch milliseconds)
+ *  - `angkatan_id` -> [angkatanId]
+ *  - `status`      -> [status]  (see [SesiStatus])
+ *  - `rekap_kelas` -> [rekapKelas] (list of [RekapKelas])
  */
+@IgnoreExtraProperties
 data class SesiLarkam(
-    @DocumentId
+    @get:Exclude
     var idSesi: String = "",
 
     var tanggal: Long = 0L,

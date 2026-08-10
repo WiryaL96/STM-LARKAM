@@ -1,7 +1,7 @@
 package com.wiryadinata.stmlarkam.data.model
 
-import com.google.firebase.Timestamp
-import com.google.firebase.firestore.PropertyName
+import com.google.firebase.database.IgnoreExtraProperties
+import com.google.firebase.database.PropertyName
 
 /**
  * Status of a single class's independent 25-minute timer.
@@ -10,22 +10,24 @@ import com.google.firebase.firestore.PropertyName
 object TimerStatusValue {
     const val BELUM_MULAI = "BELUM_MULAI"
     const val BERJALAN = "BERJALAN"
+    const val PAUSED = "PAUSED"
     const val SELESAI = "SELESAI"
 }
 
 /**
  * Recap for a single class within a Larkam session. Stored as an element of the
- * `rekap_kelas` array on a [SesiLarkam] document.
+ * `rekap_kelas` list on a [SesiLarkam] record.
  *
- * Firestore field mapping:
+ * Realtime Database field mapping:
  *  - `nama_kelas`         -> [namaKelas]        (e.g. "XII TOI A")
  *  - `total_siswa`        -> [totalSiswa]       (jumlah hadir target / roster yang lari)
  *  - `total_hadir`        -> [totalHadir]       (counted present via card taps)
  *  - `total_izin`         -> [totalIzin]        (jumlah tidak hadir)
  *  - `detail_izin`        -> [detailIzin]       (list of { nama, alasan })
- *  - `waktu_mulai_timer`  -> [waktuMulaiTimer]  (when THIS class's timer started; null if not started)
+ *  - `waktu_mulai_timer`  -> [waktuMulaiTimer]  (epoch millis when THIS class's timer started; null if not started)
  *  - `status_timer`       -> [statusTimer]      (see [TimerStatusValue])
  */
+@IgnoreExtraProperties
 data class RekapKelas(
     @get:PropertyName("nama_kelas")
     @set:PropertyName("nama_kelas")
@@ -47,9 +49,11 @@ data class RekapKelas(
     @set:PropertyName("detail_izin")
     var detailIzin: List<DetailIzin> = emptyList(),
 
+    // Epoch milliseconds when THIS class's timer started (null if not started yet).
+    // Realtime Database has no dedicated timestamp type, so this is a plain Long.
     @get:PropertyName("waktu_mulai_timer")
     @set:PropertyName("waktu_mulai_timer")
-    var waktuMulaiTimer: Timestamp? = null,
+    var waktuMulaiTimer: Long? = null,
 
     @get:PropertyName("status_timer")
     @set:PropertyName("status_timer")

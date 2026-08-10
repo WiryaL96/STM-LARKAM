@@ -21,7 +21,7 @@ object Routes {
 /**
  * App root: Splash -> Home -> Page_add. The selected angkatan filter on Home is
  * forwarded to the add screen as an optional argument, and finishing a session
- * pops back to Home (which refreshes from Firestore automatically).
+ * pops back to Home (which refreshes from Realtime Database automatically).
  */
 @Composable
 fun LarkamApp() {

@@ -1,20 +1,28 @@
 package com.wiryadinata.stmlarkam.data.model
 
-import com.google.firebase.firestore.DocumentId
-import com.google.firebase.firestore.PropertyName
+import com.google.firebase.database.Exclude
+import com.google.firebase.database.IgnoreExtraProperties
+import com.google.firebase.database.PropertyName
 
 /**
- * Firestore document in the `angkatan` collection.
+ * A record under the `angkatan` node of Realtime Database.
  *
- * Fields (as stored in Firestore):
- *  - document id      -> [id]
- *  - `nama_angkatan`  -> [namaAngkatan] (e.g. "@51")
+ * Stored shape (JSON):
+ * ```
+ * "angkatan": {
+ *   "<pushId>": { "nama_angkatan": "@51" }
+ * }
+ * ```
  *
- * All properties are `var` with defaults so Firestore can deserialize via the
- * no-arg constructor path.
+ * [id] is the record key (the push id); it is NOT written as a child (see [Exclude])
+ * and is populated from the snapshot key when reading.
+ *
+ * All properties are `var` with defaults so Realtime Database can deserialize via the
+ * no-arg constructor + setters.
  */
+@IgnoreExtraProperties
 data class Angkatan(
-    @DocumentId
+    @get:Exclude
     var id: String = "",
 
     @get:PropertyName("nama_angkatan")

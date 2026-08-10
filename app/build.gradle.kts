@@ -4,13 +4,14 @@ plugins {
     alias(libs.plugins.android.application)
     // Enables the Compose compiler and turns on the compose build feature.
     alias(libs.plugins.compose.compiler)
+    alias(libs.plugins.google.services)
     // NOTE: no org.jetbrains.kotlin.android — AGP 9 built-in Kotlin handles Kotlin.
 }
 
 // Apply the Google Services plugin ONLY when google-services.json is present, so the
 // app still builds without a Firebase config. At runtime the app then falls back to a
 // local in-memory repository (see ServiceLocator). Drop your google-services.json into
-// app/ to switch automatically to real Cloud Firestore.
+// app/ to switch automatically to real Firebase Realtime Database.
 if (file("google-services.json").exists()) {
     apply(plugin = "com.google.gms.google-services")
 } else {
@@ -84,9 +85,9 @@ dependencies {
     implementation(libs.androidx.navigation.compose)
     debugImplementation(libs.androidx.ui.tooling)
 
-    // Firebase Firestore (BOM-managed versions)
+    // Firebase Realtime Database (BOM-managed versions)
     implementation(platform(libs.firebase.bom))
-    implementation(libs.firebase.firestore)
+    implementation(libs.firebase.database)
 
     // Tests
     testImplementation(libs.junit)
