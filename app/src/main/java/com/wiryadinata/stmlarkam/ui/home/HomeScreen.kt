@@ -35,9 +35,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.wiryadinata.stmlarkam.R
+import androidx.compose.foundation.Image
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.wiryadinata.stmlarkam.data.model.Angkatan
@@ -54,12 +57,20 @@ fun HomeScreen(
         topBar = {
             TopAppBar(
                 title = {
-                    Column {
-                        Text("STM LARKAM", fontWeight = FontWeight.Bold)
-                        Text(
-                            "Rekap Lari Kampus",
-                            style = MaterialTheme.typography.labelSmall
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Image(
+                            painter = painterResource(id = R.drawable.logo_smkn1cimahi),
+                            contentDescription = null,
+                            modifier = Modifier.size(40.dp)
                         )
+                        Spacer(Modifier.size(12.dp))
+                        Column {
+                            Text("STM LARKAM", fontWeight = FontWeight.Bold)
+                            Text(
+                                "Rekap Lari Kampus",
+                                style = MaterialTheme.typography.labelSmall
+                            )
+                        }
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(

@@ -2,8 +2,9 @@ package com.wiryadinata.stmlarkam.ui.session
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -472,6 +473,7 @@ private fun AddKelasForm(
     val izinList = remember { mutableStateListOf<DetailIzin>() }
     var izinNama by remember { mutableStateOf("") }
     var izinAlasan by remember { mutableStateOf("") }
+    val izinScrollState = rememberLazyListState()
 
     // Reset the picked class when the angkatan (hence the option set) changes.
     LaunchedEffect(angkatanKey) { namaKelas = "" }
@@ -542,11 +544,15 @@ private fun AddKelasForm(
 
             val addIzin = {
                 if (izinNama.isNotBlank()) {
-                    // Prepend so the newest entry shows right under the input.
-                    izinList.add(0, DetailIzin(izinNama.trim(), izinAlasan.trim()))
+                    izinList.add(DetailIzin(izinNama.trim(), izinAlasan.trim()))
                     izinNama = ""
                     izinAlasan = ""
                 }
+            }
+
+            // Auto-scroll izin list to bottom when new entry added.
+            LaunchedEffect(izinList.size) {
+                if (izinList.isNotEmpty()) izinScrollState.animateScrollToItem(izinList.lastIndex)
             }
 
             // Input row FIRST so it stays put near the label as entries pile up.
@@ -576,17 +582,16 @@ private fun AddKelasForm(
                 }
             }
 
-            // Added entries, newest first, in a bounded scroll area so the form stays compact
-            // and you always see what was just added.
+            // Added entries with auto-scroll so newly added items stay visible.
             if (izinList.isNotEmpty()) {
                 Spacer(Modifier.height(4.dp))
-                Column(
+                LazyColumn(
+                    state = izinScrollState,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .heightIn(max = 160.dp)
-                        .verticalScroll(rememberScrollState())
+                        .heightIn(max = 200.dp)
                 ) {
-                    izinList.forEachIndexed { index, izin ->
+                    itemsIndexed(izinList) { index, izin ->
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier

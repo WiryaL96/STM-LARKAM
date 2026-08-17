@@ -1,0 +1,4 @@
+- `[x]` Verify `logo_smkn1cimahi.png` asset (Note: User needs to ensure the file is valid)
+- `[x]` Update `HomeScreen.kt` header with logo
+- `[x]` Update `SplashScreen.kt` with logo
+- `[x]` Verify build and UI
